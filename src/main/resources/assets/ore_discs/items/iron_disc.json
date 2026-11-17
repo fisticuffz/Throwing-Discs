@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "ore_discs:item/iron_disc"
+  }
+}
