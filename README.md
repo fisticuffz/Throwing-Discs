@@ -1,4 +1,5 @@
 # Throwing Discs (Java, Fabric 26.3)
+Adds Throwing discs to Minecraft Java Edition
 
 Right-click to throw a disc. It flies out, ricochets off walls (faster every bounce, up to 1.5x), pierces mobs, then returns to you.
 
