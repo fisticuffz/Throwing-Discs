@@ -8,15 +8,10 @@ scoreboard players set @s od_gen 0
 scoreboard players set @s od_age 0
 scoreboard players set @s od_spin 0
 scoreboard players set @s od_dur 0
-scoreboard players set @s od_max 0
 scoreboard players add #next od_t 1
 scoreboard players operation @s od_id = #next od_t
 scoreboard players operation @s od_stamp = @s od_id
 scoreboard players operation @s od_stamp *= #100 od_t
-execute store result score @s od_base run data get entity @s item.components."minecraft:custom_data".spd
-execute store result score @s od_dmgamt run data get entity @s item.components."minecraft:custom_data".dmg
-execute store result score @s od_snd run data get entity @s item.components."minecraft:custom_data".snd
-execute store result score @s od_max run data get entity @s item.components."minecraft:max_damage"
 execute store result score @s od_dur run data get entity @s item.components."minecraft:damage"
 scoreboard players operation @s od_spd = @s od_base
 # direction = the unit vector the disc faces (measured by stepping 1 block forward)
