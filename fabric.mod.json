@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "throwing_discs",
+  "version": "${version}",
+  "name": "Throwing Discs",
+  "description": "Boomerang throwing discs that ricochet, pierce mobs and return like a boomerang.",
+  "authors": [
+    "Throwing Discs"
+  ],
+  "license": "MIT",
+  "icon": "assets/throwing_discs/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.throwingdiscs.ThrowingDiscsMod"
+    ],
+    "client": [
+      "com.throwingdiscs.client.ThrowingDiscsClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
