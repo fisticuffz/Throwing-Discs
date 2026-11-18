@@ -1,8 +1,11 @@
-# Throwing Discs (Java, Fabric 26.3)
-Adds Throwing discs to Minecraft Java Edition
+# Throwing Discs (Fabric, Minecraft Java 26.3)
 
-Right-click to throw a disc. It flies out, ricochets off walls (faster every bounce, up to 1.5x), pierces mobs, then returns to you.
+Real Java mod: five disc items (own item ids `throwing_discs:<tier>_disc`) and a custom disc entity with ricochets,
+piercing, durability, boomerang return and catch. Right-click to throw, from either hand.
 
-- Get discs: `/function ore_discs:give/all` (or `give/copper`, `give/iron`, `give/gold`, `give/diamond`, `give/netherite`)
-- Craft: 4 ingots in a plus. Netherite: netherite upgrade template + diamond disc + netherite ingot (shapeless).
-- Tuning lives in the recipe results and `data/ore_discs/function/give/*.mcfunction` (`dmg`, `spd` = blocks/tick x10000, `snd` = pitch x100).
+Copper 5 dmg / Iron 7 / Golden 6 / Diamond 8 / Netherite 9. Craft: 4 ingots (or diamonds) in a plus shape.
+Netherite: smithing table with the netherite upgrade template + a diamond disc + a netherite ingot.
+`config/throwing_discs.json`: `"maxSpeedMultiplier": 0` = speed keeps growing with each ricochet, `1.5` = capped at 1.5x.
+
+Build: `./gradlew build` -> `build/libs/throwing-discs-1.0.0.jar` (or use GitHub Actions -> Artifacts).
+Based on the Bedrock add-on by MrMoonstared.
