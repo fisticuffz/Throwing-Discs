@@ -40,8 +40,11 @@ public final class ModItems {
 			Item item = new ThrowingDiscItem(t, props);
 			ITEMS.put(t, Registry.register(BuiltInRegistries.ITEM, key, item));
 		}
+		// Combat tab: right after the Trident (the other throwing weapon), next to the axes and mace.
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.COMBAT).register(tab -> {
-			for (DiscType t : DiscType.values()) tab.accept(ITEMS.get(t));
+			Item[] discs = new Item[DiscType.values().length];
+			for (DiscType t : DiscType.values()) discs[t.ordinal()] = ITEMS.get(t);
+			tab.insertAfter(Items.TRIDENT, discs);
 		});
 	}
 

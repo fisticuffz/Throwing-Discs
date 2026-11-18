@@ -55,6 +55,8 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	private double speed, traveled, range = DiscConfig.BASE_RANGE;
 	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
 	private final Map<Integer, Integer> hitCooldown = new HashMap<>();
+	/** Flight velocity kept in our own field: vanilla's delta movement gets zeroed by /tp, which froze the disc. */
+	private Vec3 flightVel = Vec3.ZERO;
 
 	/** client only, for a spin animation in custom renderers */
 	public float spin, spinO;
@@ -89,6 +91,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		Vec3 d = dir.normalize();
 		setPos(owner.getEyePosition().add(d.scale(0.8)).add(0, -0.3, 0));
 		setDeltaMovement(d.scale(speed));
+		flightVel = d.scale(speed);
 		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
 		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
 	}
@@ -132,7 +135,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	// ------------------------------------------------------------------ outbound flight + ricochet
 	private void flyOut(ServerLevel sl, Player owner) {
 		Vec3 pos = position();
-		Vec3 vel = getDeltaMovement();
+		Vec3 vel = flightVel;
 		int n = Math.max(1, (int) Math.ceil(speed / 0.4));
 		for (int i = 0; i < n && phase == OUT && !finished; i++) {
 			Vec3 dir = vel.normalize();
@@ -167,6 +170,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			if (traveled >= range) startReturn();
 		}
 		setPos(pos);
+		flightVel = vel;
 		setDeltaMovement(vel);
 		faceToward(vel, follow);
 		follow = Math.max(DiscConfig.FOLLOW_BASE, follow * 0.93f);
@@ -179,7 +183,8 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	}
 
 	private void turn(ServerLevel sl, Player owner) {
-		Vec3 vel = getDeltaMovement().scale(0.65);
+		Vec3 vel = flightVel.scale(0.65);
+		flightVel = vel;
 		setDeltaMovement(vel);
 		Vec3 pos = position();
 		if (vel.lengthSqr() > 1e-6) {
