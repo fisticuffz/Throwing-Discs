@@ -51,3 +51,16 @@ java {
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25
 }
+
+// Diagnostic: prints where Minecraft's CameraRenderState lives (helps when a Minecraft update moves classes).
+tasks.withType(JavaCompile).configureEach {
+	doFirst {
+		classpath.files.findAll { it.name.endsWith('.jar') }.each { f ->
+			try {
+				new java.util.zip.ZipFile(f).withCloseable { z ->
+					z.entries().each { e -> if (e.name.endsWith('/CameraRenderState.class')) println "FOUND_CLASS ${e.name}" }
+				}
+			} catch (Exception ignored) {}
+		}
+	}
+}
