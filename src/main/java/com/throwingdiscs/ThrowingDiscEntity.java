@@ -288,7 +288,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				owner.getInventory().setItem(returnSlot, stack);
 				placed = true;
 			}
-			if (!placed && !owner.getInventory().add(stack)) owner.drop(stack, false);
+			if (!placed && !owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
 			if (caught) snd(sl, SoundEvents.TRIDENT_RETURN, 0.7f, type.pitch * 1.2f);
 		}
 		discard();
@@ -302,7 +302,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			ItemStack stack = getItem().copy();
 			if (level() instanceof ServerLevel sl) {
 				Player owner = ownerId == null ? null : sl.getPlayerByUUID(ownerId);
-				if (owner != null && !owner.getInventory().add(stack)) owner.drop(stack, false);
+				if (owner != null && !owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
 			}
 		}
 		super.remove(reason);
