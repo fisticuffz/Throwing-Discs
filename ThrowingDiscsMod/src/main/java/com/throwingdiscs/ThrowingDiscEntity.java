@@ -39,25 +39,39 @@ import java.util.UUID;
  * OUT  : flies in a straight line, ricochets off hard blocks (real reflection), pierces mobs.
  * TURN : brakes hard, leans a little and swings round to face the owner.
  * BACK : accelerates to the owner and is caught right before it touches them.
+ * After 1 second in the air the owner can also catch it simply by touching it.
+ *
+ * The server moves the disc and tells clients its direction (DATA_YAW / DATA_PITCH) and lean (DATA_TILT).
+ * The client turns the disc toward that direction smoothly and spins it (see ThrowingDiscRenderer).
  */
 public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	public static final EntityDataAccessor<ItemStack> DATA_ITEM =
 			SynchedEntityData.defineId(ThrowingDiscEntity.class, EntityDataSerializers.ITEM_STACK);
 	public static final EntityDataAccessor<Float> DATA_TILT =
 			SynchedEntityData.defineId(ThrowingDiscEntity.class, EntityDataSerializers.FLOAT);
+	public static final EntityDataAccessor<Float> DATA_YAW =
+			SynchedEntityData.defineId(ThrowingDiscEntity.class, EntityDataSerializers.FLOAT);
+	public static final EntityDataAccessor<Float> DATA_PITCH =
+			SynchedEntityData.defineId(ThrowingDiscEntity.class, EntityDataSerializers.FLOAT);
 
 	private static final int OUT = 0, TURN = 1, BACK = 2;
+	private static final int TOUCH_CATCH_AFTER_TICKS = 20;   // 1 second
 
+	// ---- server state
 	private UUID ownerId;
 	private DiscType type = DiscType.IRON;
-	private int phase = OUT, phaseTick, age, returnSlot = -1;
+	private int phase = OUT, phaseTick, life, returnSlot = -1;
 	private boolean offhand, finished;
 	private double speed, traveled, range = DiscConfig.BASE_RANGE;
-	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
+	private float tilt, tiltSign = 1f;
+	private double lastSweepDist;
 	private final Map<Integer, Integer> hitCooldown = new HashMap<>();
 
-	/** client only, for a spin animation in custom renderers */
+	// ---- client state (visual only)
 	public float spin, spinO;
+	public float viewYaw, viewYawO, viewPitch, viewPitchO;
+	private float viewFollow = DiscConfig.FOLLOW_BASE;
+	private boolean viewInit;
 
 	public ThrowingDiscEntity(EntityType<? extends ThrowingDiscEntity> entityType, Level level) {
 		super(entityType, level);
@@ -68,6 +82,8 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	protected void defineSynchedData(SynchedEntityData.Builder builder) {
 		builder.define(DATA_ITEM, ItemStack.EMPTY);
 		builder.define(DATA_TILT, 0f);
+		builder.define(DATA_YAW, 0f);
+		builder.define(DATA_PITCH, 0f);
 	}
 
 	@Override
@@ -89,8 +105,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		Vec3 d = dir.normalize();
 		setPos(owner.getEyePosition().add(d.scale(0.8)).add(0, -0.3, 0));
 		setDeltaMovement(d.scale(speed));
-		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
-		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
+		lookAlong(d);
 	}
 
 	// ------------------------------------------------------------------ tick
@@ -98,8 +113,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	public void tick() {
 		super.tick();
 		if (level().isClientSide()) {
-			spinO = spin;
-			spin += 45f;
+			clientTick();
 			return;
 		}
 		if (finished) return;
@@ -109,10 +123,15 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			finish(sl, null, false);
 			return;
 		}
+		life++;
+		if (ownerTouches(owner, position(), position())) {       // you walked into it
+			finish(sl, owner, true);
+			return;
+		}
 
 		hitCooldown.replaceAll((k, v) -> v - 1);
 		hitCooldown.values().removeIf(v -> v <= 0);
-		if (phase == OUT && ++age > DiscConfig.MAX_FLIGHT_TICKS) startReturn();
+		if (phase == OUT && life > DiscConfig.MAX_FLIGHT_TICKS) startReturn();
 
 		switch (phase) {
 			case OUT -> flyOut(sl, owner);
@@ -121,24 +140,79 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		}
 	}
 
+	/** Visual only: spin, and turn toward the direction the server says we are flying. */
+	private void clientTick() {
+		spinO = spin;
+		spin += 45f;                                              // 900 degrees per second
+		float ty = entityData.get(DATA_YAW);
+		float tp = entityData.get(DATA_PITCH);
+		if (!viewInit) {                                          // thrown: look exactly where it is thrown
+			viewYaw = ty;
+			viewPitch = tp;
+			viewInit = true;
+		}
+		viewYawO = viewYaw;
+		viewPitchO = viewPitch;
+		float change = Math.abs(Mth.wrapDegrees(ty - viewYaw)) + Math.abs(tp - viewPitch);
+		if (change > 25f) viewFollow = DiscConfig.FOLLOW_BOOST;  // ricochet / turn: swing round quicker
+		viewYaw = Mth.rotLerp(viewFollow, viewYaw, ty);
+		viewPitch = Mth.lerp(viewFollow, viewPitch, tp);
+		viewFollow = Math.max(DiscConfig.FOLLOW_BASE, viewFollow * 0.93f);
+	}
+
 	private void startReturn() {
 		phase = TURN;
 		phaseTick = 0;
 		hitCooldown.clear();
 		tiltSign = random.nextBoolean() ? 1f : -1f;
-		follow = 0.3f;
+	}
+
+	private void lookAlong(Vec3 d) {
+		if (d.lengthSqr() < 1e-8) return;
+		entityData.set(DATA_YAW, (float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
+		entityData.set(DATA_PITCH, (float) (-Math.asin(Mth.clamp(d.y / d.length(), -1, 1)) * Mth.RAD_TO_DEG));
+	}
+
+	// ------------------------------------------------------------------ catching by touch
+	private boolean ownerTouches(Player owner, Vec3 from, Vec3 to) {
+		if (life < TOUCH_CATCH_AFTER_TICKS) return false;
+		AABB box = owner.getBoundingBox().inflate(0.3);
+		return box.contains(to) || box.clip(from, to).isPresent();
+	}
+
+	// ------------------------------------------------------------------ block sweep (centre ray + 4 side rays)
+	private BlockHitResult sweep(ServerLevel sl, Vec3 from, Vec3 dir, double dist) {
+		Vec3 to = from.add(dir.scale(dist));
+		BlockHitResult best = sl.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+		lastSweepDist = best.getType() == HitResult.Type.BLOCK ? best.getLocation().distanceTo(from) : Double.MAX_VALUE;
+		Vec3 up = Math.abs(dir.y) > 0.99 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+		Vec3 a = dir.cross(up).normalize().scale(DiscConfig.RADIUS * 0.8);
+		Vec3 b = dir.cross(a).normalize().scale(DiscConfig.RADIUS * 0.8);
+		for (Vec3 off : new Vec3[]{a, a.scale(-1), b, b.scale(-1)}) {
+			Vec3 o = from.add(off);
+			BlockHitResult h = sl.clip(new ClipContext(o, to.add(off), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+			if (h.getType() == HitResult.Type.BLOCK) {
+				double d = h.getLocation().distanceTo(o);
+				if (d < lastSweepDist) {
+					lastSweepDist = d;
+					best = h;
+				}
+			}
+		}
+		return best;
 	}
 
 	// ------------------------------------------------------------------ outbound flight + ricochet
 	private void flyOut(ServerLevel sl, Player owner) {
 		Vec3 pos = position();
 		Vec3 vel = getDeltaMovement();
-		int n = Math.max(1, (int) Math.ceil(speed / 0.4));
-		for (int i = 0; i < n && phase == OUT && !finished; i++) {
+		if (vel.lengthSqr() < 1e-8) vel = new Vec3(0, 0, 1).scale(speed);
+		double remaining = speed;
+		int bounces = 0;
+		while (remaining > 1e-4 && phase == OUT && !finished) {
 			Vec3 dir = vel.normalize();
-			Vec3 step = dir.scale(speed / n);
-			Vec3 to = pos.add(step).add(dir.scale(DiscConfig.RADIUS));
-			BlockHitResult hit = sl.clip(new ClipContext(pos, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this));
+			double step = Math.min(remaining, 0.4);
+			BlockHitResult hit = sweep(sl, pos, dir, step + DiscConfig.RADIUS);
 			if (hit.getType() == HitResult.Type.BLOCK) {
 				BlockPos bp = hit.getBlockPos();
 				if (sl.getBlockState(bp).is(Blocks.DECORATED_POT)) {      // pots break and the disc comes home
@@ -147,30 +221,40 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 					break;
 				}
 				Vec3 normal = Vec3.atLowerCornerOf(hit.getDirection().getUnitVec3i());
-				double d = vel.dot(normal);
-				if (d < 0) vel = vel.subtract(normal.scale(2 * d));         // real reflection
+				double d = dir.dot(normal);
+				if (d < 0) dir = dir.subtract(normal.scale(2 * d));         // real reflection off the face
+				double adv = Math.max(0.0, Math.min(step, lastSweepDist - DiscConfig.RADIUS));
+				pos = pos.add(vel.normalize().scale(adv));                  // stop just short of the wall
 				range += DiscConfig.RICOCHET_RANGE;
 				speed = Math.min(speed * DiscConfig.RICOCHET_SPEEDUP, DiscConfig.speedCap(type));
-				vel = vel.normalize().scale(speed);
-				pos = hit.getLocation().add(normal.scale(DiscConfig.RADIUS + 0.01));
-				follow = DiscConfig.FOLLOW_BOOST;
+				vel = dir.normalize().scale(speed);
 				hitCooldown.clear();
 				snd(sl, SoundEvents.TRIDENT_HIT_GROUND, 0.8f, type.pitch * (0.9f + random.nextFloat() * 0.3f));
 				snd(sl, SoundEvents.ANVIL_LAND, 0.15f, 1.8f);
-				continue;                                                    // ricochets stay flat (no tilt)
+				remaining -= Math.max(adv, 0.1);
+				if (++bounces > 6) {                                        // wedged in a tight spot
+					startReturn();
+					break;
+				}
+				continue;
 			}
-			pos = pos.add(step);
-			traveled += step.length();
+			Vec3 prev = pos;
+			pos = pos.add(dir.scale(step));
+			traveled += step;
+			remaining -= step;
 			setPos(pos);
 			hitEntities(sl, owner, pos);
 			if (finished) return;
+			if (ownerTouches(owner, prev, pos)) {
+				finish(sl, owner, true);
+				return;
+			}
 			if (traveled >= range) startReturn();
 		}
 		setPos(pos);
 		setDeltaMovement(vel);
-		faceToward(vel, follow);
-		follow = Math.max(DiscConfig.FOLLOW_BASE, follow * 0.93f);
-		setTilt(Mth.lerp(0.35f, tilt, 0f));
+		lookAlong(vel);                       // flat on walls, pitched along the path after a floor/ceiling bounce
+		setTilt(Mth.lerp(0.35f, tilt, 0f));   // ricochets never lean the disc
 	}
 
 	// ------------------------------------------------------------------ return trip
@@ -183,17 +267,21 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		setDeltaMovement(vel);
 		Vec3 pos = position();
 		if (vel.lengthSqr() > 1e-6) {
-			Vec3 to = pos.add(vel).add(vel.normalize().scale(DiscConfig.RADIUS));
-			boolean blocked = sl.clip(new ClipContext(pos, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, this)).getType() == HitResult.Type.BLOCK;
-			if (!blocked) {
+			BlockHitResult hit = sweep(sl, pos, vel.normalize(), vel.length() + DiscConfig.RADIUS);
+			if (hit.getType() != HitResult.Type.BLOCK) {
+				Vec3 prev = pos;
 				pos = pos.add(vel);
 				setPos(pos);
+				if (ownerTouches(owner, prev, pos)) {
+					finish(sl, owner, true);
+					return;
+				}
 			}
 		}
 		hitEntities(sl, owner, pos);
 		smashPots(sl, owner, pos);
-		faceToward(chest(owner).subtract(pos), follow);
-		setTilt(Mth.lerp(0.45f, tilt, DiscConfig.RETURN_TILT * tiltSign));
+		lookAlong(chest(owner).subtract(pos));
+		setTilt(Mth.lerp(0.45f, tilt, DiscConfig.RETURN_TILT * tiltSign));   // the slight tilt before it returns
 		if (++phaseTick >= DiscConfig.TURN_TICKS) {
 			phase = BACK;
 			phaseTick = 0;
@@ -217,7 +305,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		phaseTick++;
 		hitEntities(sl, owner, pos);
 		smashPots(sl, owner, pos);
-		faceToward(dir, 0.4f);
+		lookAlong(dir);
 		float k = dist > 5 ? 1f : dist > 2.5 ? 0.5f : 0f;                  // realigns while approaching
 		setTilt(Mth.lerp(0.25f, tilt, DiscConfig.RETURN_TILT * tiltSign * k));
 	}
@@ -225,15 +313,6 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	private void smashPots(ServerLevel sl, Player owner, Vec3 pos) {
 		BlockPos bp = BlockPos.containing(pos);
 		if (sl.getBlockState(bp).is(Blocks.DECORATED_POT)) sl.destroyBlock(bp, true, owner);
-	}
-
-	// ------------------------------------------------------------------ orientation
-	private void faceToward(Vec3 dir, float f) {
-		if (dir.lengthSqr() < 1e-6) return;
-		float ty = (float) (Math.atan2(-dir.x, dir.z) * Mth.RAD_TO_DEG);
-		float tp = (float) (-Math.asin(Mth.clamp(dir.y / dir.length(), -1, 1)) * Mth.RAD_TO_DEG);
-		setYRot(Mth.rotLerp(f, getYRot(), ty));
-		setXRot(Mth.lerp(f, getXRot(), tp));
 	}
 
 	private void setTilt(float t) {
