@@ -46,7 +46,7 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 		state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
 		state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
 		state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
-		state.xRot = Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
+		state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
 		state.tilt = entity.getTilt();
 		state.spin = Mth.lerp(partialTick, entity.spinO, entity.spin);
 		this.itemModelResolver.updateForNonLiving(state.item, entity.getItem(), ItemDisplayContext.GROUND, entity);
