@@ -252,8 +252,8 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		if (dir.lengthSqr() < 1e-6) return;
 		float ty = (float) (Math.atan2(-dir.x, dir.z) * Mth.RAD_TO_DEG);
 		float tp = (float) (-Math.asin(Mth.clamp(dir.y / dir.length(), -1, 1)) * Mth.RAD_TO_DEG);
-		setYRot(Mth.rotLerp(f, getYRot(), ty));
-		setXRot(Mth.lerp(f, getXRot(), tp));
+		setYRot(ty);   // snap exactly to the direction of travel: no lag, no wobble (the renderer blends between ticks)
+		setXRot(tp);
 	}
 
 	private void setTilt(float t) {

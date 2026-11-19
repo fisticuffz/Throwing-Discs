@@ -23,7 +23,9 @@ public final class DiscConfig {
 	public static final double CATCH_DISTANCE = 0.5;     // caught right before it touches you
 	public static final float FOLLOW_BASE = 0.25f;       // facing speed while flying
 	public static final float FOLLOW_BOOST = 0.65f;      // facing speed right after a ricochet
-	public static final float RETURN_TILT = 4.0f;        // degrees, return trip only. Ricochets stay flat.
+	/** true: the disc stays level like a frisbee even when flying up/down; false: it pitches along its path. */
+	public static final boolean KEEP_LEVEL = false;
+	public static final float RETURN_TILT = 0.0f;        // degrees, return trip only. Ricochets stay flat.
 	public static final int MAX_FLIGHT_TICKS = 1200;
 
 	public static double maxSpeedMultiplier = 1.5;
