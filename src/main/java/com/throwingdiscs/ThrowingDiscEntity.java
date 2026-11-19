@@ -32,7 +32,10 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The flying disc.
@@ -47,6 +50,18 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			SynchedEntityData.defineId(ThrowingDiscEntity.class, EntityDataSerializers.FLOAT);
 
 	private static final int OUT = 0, TURN = 1, BACK = 2;
+
+	/** every disc currently in flight on the server, so they can be handed back when their owner leaves the world */
+	private static final Set<ThrowingDiscEntity> ACTIVE = ConcurrentHashMap.newKeySet();
+
+	/** Called when a player disconnects: every disc they have in the air goes back into their inventory. */
+	public static void recallAll(Player player) {
+		for (ThrowingDiscEntity d : new ArrayList<>(ACTIVE)) {
+			if (!d.finished && player.getUUID().equals(d.ownerId) && d.level() instanceof ServerLevel sl) {
+				d.finish(sl, player, false);
+			}
+		}
+	}
 
 	private UUID ownerId;
 	private DiscType type = DiscType.IRON;
@@ -89,6 +104,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	public void launch(Player owner, ItemStack stack, DiscType type, boolean offhand, int slot, Vec3 dir) {
 		this.ownerId = owner.getUUID();
+		ACTIVE.add(this);
 		this.type = type;
 		this.offhand = offhand;
 		this.returnSlot = slot;
@@ -321,6 +337,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	@Override
 	public void remove(RemovalReason reason) {
+		ACTIVE.remove(this);
 		// chunk unload / world close while flying: hand the disc back instead of losing it
 		if (!level().isClientSide() && !finished && reason != RemovalReason.DISCARDED && reason != RemovalReason.KILLED) {
 			finished = true;
