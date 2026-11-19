@@ -61,6 +61,12 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	/** client only, for a spin animation in custom renderers */
 	public float spin, spinO;
 
+	/** client only: position/rotation at the previous and current client tick, so the renderer can blend between them
+	 *  even when the game snaps the entity to each server update (this is what makes /tick rate 5 look smooth). */
+	public double smX0, smY0, smZ0, smX1, smY1, smZ1;
+	public float smYaw0, smYaw1, smPitch0, smPitch1;
+	private boolean smoothInit;
+
 	public ThrowingDiscEntity(EntityType<? extends ThrowingDiscEntity> entityType, Level level) {
 		super(entityType, level);
 		this.noPhysics = true;
@@ -103,6 +109,15 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		if (level().isClientSide()) {
 			spinO = spin;
 			spin += 45f;
+			if (!smoothInit) {
+				smoothInit = true;
+				smX1 = getX(); smY1 = getY(); smZ1 = getZ();
+				smYaw1 = getYRot(); smPitch1 = getXRot();
+			}
+			smX0 = smX1; smY0 = smY1; smZ0 = smZ1;
+			smYaw0 = smYaw1; smPitch0 = smPitch1;
+			smX1 = getX(); smY1 = getY(); smZ1 = getZ();
+			smYaw1 = getYRot(); smPitch1 = getXRot();
 			return;
 		}
 		if (finished) return;
@@ -160,7 +175,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				hitCooldown.clear();
 				snd(sl, SoundEvents.TRIDENT_HIT_GROUND, 0.8f, type.pitch * (0.9f + random.nextFloat() * 0.3f));
 				snd(sl, SoundEvents.ANVIL_LAND, 0.15f, 1.8f);
-				continue;                                                    // ricochets stay flat (no tilt)
+				break;                                                       // one ricochet per tick: no zig-zag in corners
 			}
 			pos = pos.add(step);
 			traveled += step.length();
