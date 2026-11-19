@@ -40,8 +40,13 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 	@Override
 	public void extractRenderState(ThrowingDiscEntity entity, State state, float partialTick) {
 		super.extractRenderState(entity, state, partialTick);
-		state.yRot = entity.getYRot();
-		state.xRot = entity.getXRot();
+		// blend between the last and current tick so the turning is smooth at any frame rate / tick rate
+		// blend our own previous-tick -> current-tick values (the game snaps the disc to every server update)
+		state.x = Mth.lerp((double) partialTick, entity.smX0, entity.smX1);
+		state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
+		state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
+		state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
+		state.xRot = Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
 		state.tilt = entity.getTilt();
 		state.spin = Mth.lerp(partialTick, entity.spinO, entity.spin);
 		this.itemModelResolver.updateForNonLiving(state.item, entity.getItem(), ItemDisplayContext.GROUND, entity);
