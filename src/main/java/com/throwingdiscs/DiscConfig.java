@@ -24,6 +24,8 @@ public final class DiscConfig {
 	public static final float FOLLOW_BASE = 0.25f;       // facing speed while flying
 	public static final float FOLLOW_BOOST = 0.65f;      // facing speed right after a ricochet
 	/** true: the disc stays level like a frisbee even when flying up/down; false: it pitches along its path. */
+	/** max degrees the disc turns per tick toward its direction of travel (lower = slower, smoother swing). */
+	public static final float TURN_RATE = 30.0f;
 	public static final boolean KEEP_LEVEL = false;
 	public static final float RETURN_TILT = 0.0f;        // degrees, return trip only. Ricochets stay flat.
 	public static final int MAX_FLIGHT_TICKS = 1200;
