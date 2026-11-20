@@ -19,14 +19,14 @@ If you hit one, paste the error to me and I will fix it.
 ## Way 1 - build on GitHub (no local setup)
 1. Create a new GitHub repository and upload everything in this folder (keep the `.github` folder!).
 2. Open the **Actions** tab -> "build" -> wait for the green check.
-3. Download the `throwing-discs-jar` artifact: it contains `throwing-discs-1.0.1.jar` (the `-sources.jar` is not needed).
+3. Download the `throwing-discs-jar` artifact: it contains `throwing-discs-1.0.4.jar` (the `-sources.jar` is not needed).
 
 ## Way 2 - build locally (recommended if you have JDK 25)
 The Gradle wrapper (`gradlew`) cannot be generated without network access, so take it from the official template:
 1. Go to https://fabricmc.net/develop/template , choose **26.3**, untick data generation/split sources if you like, download.
 2. Unzip it. Copy these files from the template into this folder (overwrite): `gradlew`, `gradlew.bat`, the `gradle/` folder.
    (Optionally also copy its `build.gradle`/`gradle.properties` - they should match ours - 3 version numbers).
-3. In this folder run `./gradlew build` (Windows: `gradlew.bat build`). The jar is in `build/libs/throwing-discs-1.0.1.jar`.
+3. In this folder run `./gradlew build` (Windows: `gradlew.bat build`). The jar is in `build/libs/throwing-discs-1.0.4.jar`.
 4. To test in a dev client: `./gradlew runClient`. In VS Code: install "Extension Pack for Java" + "Gradle for Java" and open the folder.
 
 ## Other Minecraft versions
@@ -41,12 +41,12 @@ Netherite: smithing table with the netherite upgrade template, a diamond disc an
 Config: `config/throwing_discs.json` -> `"maxSpeedMultiplier": 0` = speed keeps increasing with every ricochet,
 `1.5` = capped at 1.5x the starting speed.
 
-## Flat spinning renderer (optional second step)
-The mod first uses vanilla's `ThrownItemRenderer` (a sprite that faces the camera) because that API is the same on
-every version and is certain to compile. To get the flat, spinning, pitched disc:
-1. Move `optional/ThrowingDiscFlatRenderer.java.txt` to `src/client/java/com/throwingdiscs/client/ThrowingDiscFlatRenderer.java`.
-2. In `ThrowingDiscsClient.java` replace the register line with
-   `EntityRenderers.register(ModEntities.DISC, ThrowingDiscFlatRenderer::new);`
-3. Fix any red imports with your IDE's quick-fix (the rendering API is the most change-prone part of Minecraft).
+## Behaviour
+* Flies in a straight line while spinning (900 deg/s), lying flat with its plane along the direction of travel.
+* Ricochets off block faces (real reflection). Off a vertical wall it stays flat; off the floor/ceiling it pitches to
+  look along its new path. Every ricochet adds 5 blocks of range and 10% speed.
+* Before returning it brakes and leans slightly (4 deg), then homes in on you and is caught right before touching you.
+* After it has been in the air for 1 second, simply touching it (walking into it) puts it back in your inventory.
+* Breaks decorated pots, pierces mobs, durability/enchants work.
 
 `reference/bedrock_main.js` is the finished Bedrock version of the same behaviour, for comparison.
