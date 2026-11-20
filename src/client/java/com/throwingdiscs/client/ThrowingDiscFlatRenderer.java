@@ -72,7 +72,8 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 				.rotateX((float) Math.toRadians(90f))                 // lay the sprite flat
 				.rotateZ((float) Math.toRadians(state.spin));         // spin around its own axis
 		poseStack.mulPose(m);
-		poseStack.scale(1.6f, 1.6f, 1.6f);
+		float sc = com.throwingdiscs.DiscConfig.RENDER_SCALE;
+		poseStack.scale(sc, sc, sc);
 		state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);
 		poseStack.popPose();
 	}
