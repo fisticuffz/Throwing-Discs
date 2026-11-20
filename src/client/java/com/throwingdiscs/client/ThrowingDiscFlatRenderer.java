@@ -41,15 +41,24 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 	public void extractRenderState(ThrowingDiscEntity entity, State state, float partialTick) {
 		super.extractRenderState(entity, state, partialTick);
 		// blend between the last and current tick so the turning is smooth at any frame rate / tick rate
-		// blend our own previous-tick -> current-tick values (the game snaps the disc to every server update)
-		state.x = Mth.lerp((double) partialTick, entity.smX0, entity.smX1);
-		state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
-		state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
-		state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
-		state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
+		// At normal speed the game's own position is already smooth, so use it as is. Only when the world runs slower
+		// than 20 ticks per second (/tick rate) blend our own previous-tick -> current-tick values, so the disc doesn't hop.
+		boolean slow = entity.level().tickRateManager().tickrate() < 19.5f;
+		if (slow) {
+			state.x = Mth.lerp((double) partialTick, entity.smX0, entity.smX1);
+			state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
+			state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
+			state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
+			state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
+		} else {
+			state.yRot = Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot());
+			state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
+		}
 		state.tilt = entity.getTilt();
 		state.spin = Mth.lerp(partialTick, entity.spinO, entity.spin);
-		this.itemModelResolver.updateForNonLiving(state.item, entity.getItem(), ItemDisplayContext.GROUND, entity);
+		// FIXED, not GROUND: the GROUND display transform shifts the model up by 2/16 of a block, and because the spin is around
+		// the sprite's own axis that shift made the disc orbit a point off to one side instead of spinning on its centre.
+		this.itemModelResolver.updateForNonLiving(state.item, entity.getItem(), ItemDisplayContext.FIXED, entity);
 	}
 
 	@Override
