@@ -1,0 +1,20 @@
+{
+	"schemaVersion": 1,
+	"id": "throwing_discs",
+	"version": "1.0.0",
+	"name": "Throwing Discs",
+	"description": "Boomerang throwing discs that ricochet off walls and speed up. Right-click to throw. Max Speed build.",
+	"authors": ["fisticuffz"],
+	"license": "All-Rights-Reserved",
+	"icon": "assets/throwing_discs/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.fisticuffz.throwingdiscs.ThrowingDiscsMod"]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

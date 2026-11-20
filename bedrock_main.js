@@ -13,11 +13,11 @@ const DISCS = {
   "ore_discs:netherite_disc": { ent: "ore_discs:netherite_disc_entity", damage: 9, speed: 0.7 , snd: 0.8 },
 };
 const CFG = {
-  baseRange: 10,        // blocks travelled before returning
-  ricochetBonus: 5,     // extra range granted by every ricochet
+  baseRange: 9.5,        // blocks travelled before returning
+  ricochetBonus: 2.0,     // extra range granted by every ricochet
   turnTicks: 8,         // length of the "slow down + tilt + face player" phase
   accelTicks: 12,       // ticks to reach full speed on the way back
-  catchDistance: 0.45,      // caught right before it touches you
+  catchDistance: 0.1,      // caught right before it touches you
   maxLifetime: 1200,     // safety: ticks before a disc is forced home
   hitRadius: 0.9,
   discRadius: 0.3,      // clearance kept from walls
@@ -27,9 +27,9 @@ const CFG = {
   wallBank: 0,          // lean after bouncing off a WALL (0 = stays flat)
   floorBank: 0,         // lean after bouncing off the ground / a ceiling (0 = stays flat, try 24 for a lean)
   throwCooldown: 6,
-  ricochetSpeedUp: 1.1, // each ricochet makes it faster...
-  maxSpeedMul: 1.5,      // speed increases with every ricochet up to 1.5x its starting speed
-  hardSpeedCap: 6,      // technical safety limit (blocks per tick)
+  ricochetSpeedUp: 0.2, // each ricochet makes it faster...
+  maxSpeedMul: 1.1,      // speed increases with every ricochet up to 1.5x its starting speed
+  hardSpeedCap: 5,      // technical safety limit (blocks per tick)
 };
 const NORMALS = {
   Up: { x: 0, y: 1, z: 0 }, Down: { x: 0, y: -1, z: 0 },
