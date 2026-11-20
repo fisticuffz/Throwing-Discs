@@ -13,22 +13,22 @@ import java.nio.file.Path;
  *                     1.5 = speed stops growing at 1.5x the disc's starting speed
  */
 public final class DiscConfig {
-	public static final double BASE_RANGE = 10.0;        // blocks before it returns
-	public static final double RICOCHET_RANGE = 5.0;     // extra range per ricochet
+	public static final double BASE_RANGE = 9.5;        // blocks before it returns
+	public static final double RICOCHET_RANGE = 2.0;     // extra range per ricochet
 	public static final double RICOCHET_SPEEDUP = 1.10;  // speed multiplier per ricochet
-	public static final double HARD_SPEED_CAP = 6.0;     // blocks per tick, safety limit
+	public static final double HARD_SPEED_CAP = 4.0;     // blocks per tick, safety limit
 	public static final double RADIUS = 0.3;             // clearance kept from walls
 	public static final int TURN_TICKS = 8;              // brake + turn phase length
 	public static final int ACCEL_TICKS = 12;
-	public static final double CATCH_DISTANCE = 0.5;     // caught right before it touches you
-	public static final float FOLLOW_BASE = 0.25f;       // facing speed while flying
+	public static final double CATCH_DISTANCE = 0.2;     // caught right before it touches you
+	public static final float FOLLOW_BASE = 0.45f;       // facing speed while flying
 	public static final float FOLLOW_BOOST = 0.65f;      // facing speed right after a ricochet
 	/** true: the disc stays level like a frisbee even when flying up/down; false: it pitches along its path. */
 	/** max degrees the disc turns per tick toward its direction of travel (lower = slower, smoother swing). */
 	public static final float TURN_RATE = 30.0f;
 	/** how big the disc is drawn. 1.0 = 0.5 blocks wide, which is exactly its hitbox. Bigger number = bigger disc. */
 	public static final float RENDER_SCALE = 1.0f;
-	public static final boolean KEEP_LEVEL = true;
+	public static final boolean KEEP_LEVEL = false;
 	public static final float RETURN_TILT = 0.0f;        // degrees, return trip only. Ricochets stay flat.
 	public static final int MAX_FLIGHT_TICKS = 1200;
 

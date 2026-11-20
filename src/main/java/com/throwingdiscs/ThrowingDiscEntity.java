@@ -113,6 +113,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		Vec3 d = dir.normalize();
 		setPos(owner.getEyePosition().add(d.scale(0.8)).add(0, -0.3, 0));
 		setDeltaMovement(d.scale(speed));
+		Vec3 facing = d.scale(-1);
 		flightVel = d.scale(speed);
 		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
 		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
@@ -266,7 +267,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	// ------------------------------------------------------------------ orientation
 	private void faceToward(Vec3 dir, float f) {
 		if (dir.lengthSqr() < 1e-6) return;
-		float ty = (float) (Math.atan2(-dir.x, dir.z) * Mth.RAD_TO_DEG);
+		float ty = (float) (Math.atan2(dir.x, -dir.z) * Mth.RAD_TO_DEG);
 		float tp = (float) (-Math.asin(Mth.clamp(dir.y / dir.length(), -1, 1)) * Mth.RAD_TO_DEG);
 		// turn toward the direction of travel at a steady speed (no lag, no overshoot): exact while flying straight,
 		// and a bounce / the return turn swings round smoothly instead of snapping
