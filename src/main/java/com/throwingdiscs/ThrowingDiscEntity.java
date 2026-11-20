@@ -206,7 +206,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		setDeltaMovement(vel);
 		faceToward(vel, follow);
 		follow = Math.max(DiscConfig.FOLLOW_BASE, follow * 0.93f);
-		setTilt(Mth.lerp(0.35f, tilt, 0f));
+		setTilt(Mth.lerp(0f, tilt, 0f));
 	}
 
 	// ------------------------------------------------------------------ return trip
