@@ -5,7 +5,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.level.block.entity.DispenserBlockEntity;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -162,7 +161,15 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	}
 
 	private void returnToDispenser(ServerLevel sl, ItemStack stack) {
-		if (dispensed && home != null && sl.getBlockEntity(home) instanceof DispenserBlockEntity d && d.addItem(stack) >= 0) return;
+		if (dispensed && home != null && sl.getBlockEntity(home) instanceof net.minecraft.world.Container c) {
+			for (int i = 0; i < c.getContainerSize(); i++) {          // first empty slot of the dispenser
+				if (c.getItem(i).isEmpty()) {
+					c.setItem(i, stack);
+					c.setChanged();
+					return;
+				}
+			}
+		}
 		spawnAtLocation(sl, stack);
 	}
 
