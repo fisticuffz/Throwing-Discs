@@ -22,7 +22,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
@@ -67,6 +69,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	private DiscType type = DiscType.IRON;
 	private int phase = OUT, phaseTick, age, returnSlot = -1;
 	private boolean offhand, finished;
+	private int life;   // ticks since it was thrown (server)
 	private double speed, traveled, range = DiscConfig.BASE_RANGE;
 	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
 	private final Map<Integer, Integer> hitCooldown = new HashMap<>();
@@ -145,6 +148,12 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			return;
 		}
 
+		life++;
+		if (phase != BACK && ownerTouches(owner, position(), position())) {   // you walked into it
+			finish(sl, owner, true);
+			return;
+		}
+
 		hitCooldown.replaceAll((k, v) -> v - 1);
 		hitCooldown.values().removeIf(v -> v <= 0);
 		if (phase == OUT && ++age > DiscConfig.MAX_FLIGHT_TICKS) startReturn();
@@ -190,15 +199,20 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				pos = hit.getLocation().add(normal.scale(DiscConfig.RADIUS + 0.01));
 				follow = DiscConfig.FOLLOW_BOOST;
 				hitCooldown.clear();
-				snd(sl, SoundEvents.TRIDENT_HIT_GROUND, 0.8f, type.pitch * (0.9f + random.nextFloat() * 0.3f));
-				snd(sl, SoundEvents.ANVIL_LAND, 0.15f, 1.8f);
+				snd(sl, DiscSounds.RICOCHET, 0.9f, type.pitch * (0.9f + random.nextFloat() * 0.3f));
 				break;                                                       // one ricochet per tick: no zig-zag in corners
 			}
+			Vec3 prevPos = pos;
 			pos = pos.add(step);
 			traveled += step.length();
 			setPos(pos);
 			hitEntities(sl, owner, pos);
 			if (finished) return;
+			chop(sl, owner, pos);
+			if (ownerTouches(owner, prevPos, pos)) {   // you ran into it mid-flight
+				finish(sl, owner, true);
+				return;
+			}
 			if (traveled >= range) startReturn();
 		}
 		setPos(pos);
@@ -259,9 +273,34 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		setTilt(Mth.lerp(0.25f, tilt, DiscConfig.RETURN_TILT * tiltSign * k));
 	}
 
+	/** Return trip: smash pots and chop plants on the way (destroyBlock with no tool = normal drops, no silk touch). */
 	private void smashPots(ServerLevel sl, Player owner, Vec3 pos) {
 		BlockPos bp = BlockPos.containing(pos);
 		if (sl.getBlockState(bp).is(Blocks.DECORATED_POT)) sl.destroyBlock(bp, true, owner);
+		chop(sl, owner, pos);
+	}
+
+	/** The disc cuts crops and plants it flies through (they have no collision, so it passes straight through). */
+	private void chop(ServerLevel sl, Player owner, Vec3 pos) {
+		BlockPos min = BlockPos.containing(pos.add(-0.3, -0.3, -0.3));
+		BlockPos max = BlockPos.containing(pos.add(0.3, 0.3, 0.3));
+		for (BlockPos bp : BlockPos.betweenClosed(min, max)) {
+			BlockState st = sl.getBlockState(bp);
+			if (isChoppable(st)) sl.destroyBlock(bp.immutable(), true, owner);
+		}
+	}
+
+	private static boolean isChoppable(BlockState st) {
+		return st.is(BlockTags.CROPS) || st.is(BlockTags.FLOWERS)
+				|| st.is(Blocks.SHORT_GRASS) || st.is(Blocks.TALL_GRASS) || st.is(Blocks.FERN) || st.is(Blocks.LARGE_FERN)
+				|| st.is(Blocks.DEAD_BUSH) || st.is(Blocks.SUGAR_CANE);
+	}
+
+	/** True if the owner touches the disc (after it has been in the air for 1 second). Checks the whole path it just flew. */
+	private boolean ownerTouches(Player owner, Vec3 from, Vec3 to) {
+		if (life < 20) return false;
+		AABB box = owner.getBoundingBox().inflate(0.2);
+		return box.contains(to) || box.clip(from, to).isPresent();
 	}
 
 	// ------------------------------------------------------------------ orientation
@@ -294,7 +333,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			float dmg = EnchantmentHelper.modifyDamage(sl, stack, e, src, type.damage);   // Sharpness etc.
 			e.hurtServer(sl, src, dmg);
 			EnchantmentHelper.doPostAttackEffectsWithItemSource(sl, e, src, stack);       // Fire Aspect etc.
-			snd(sl, SoundEvents.TRIDENT_HIT, 0.8f, type.pitch * 1.2f);
+			snd(sl, DiscSounds.HIT, 0.8f, type.pitch * 1.2f);
 			wear(sl, owner);
 			if (finished) return;
 		}
@@ -331,7 +370,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				placed = true;
 			}
 			if (!placed && !owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
-			if (caught) snd(sl, SoundEvents.TRIDENT_RETURN, 0.7f, type.pitch * 1.2f);
+			if (caught) snd(sl, DiscSounds.RETURN, 0.7f, type.pitch * 1.1f);
 		}
 		discard();
 	}
