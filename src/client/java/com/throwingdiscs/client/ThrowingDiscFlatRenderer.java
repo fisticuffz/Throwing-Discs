@@ -14,8 +14,11 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemDisplayContext;
 import org.joml.Matrix4f;
 
+import java.util.Map;
+import java.util.WeakHashMap;
+
 /**
- * Draws the disc item flat, spinning (900 deg/s), pitched along its path and leaning by the synced tilt.
+ * Draws the disc item facing its direction of travel, spinning (900 deg/s) and leaning by the synced tilt.
  * Written against the 1.21.9+ "submit" renderer API; if something is red, use your IDE's quick fix / the
  * decompiled ThrownItemRenderer as a template (the structure is the same).
  */
@@ -37,23 +40,68 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 		return new State();
 	}
 
+	/** Remembers when each server position arrived, so the disc can be drawn slightly in the past, between two real positions. */
+	private static final class Smoother {
+		static final int N = 8;
+		final long[] t = new long[N];
+		final double[] x = new double[N], y = new double[N], z = new double[N];
+		final float[] yaw = new float[N], pitch = new float[N];
+		int count, head;   // head = index of the newest entry
+
+		int idx(int i) {   // i = 0 oldest ... count-1 newest
+			return ((head - (count - 1) + i) % N + N) % N;
+		}
+
+		void record(long now, ThrowingDiscEntity e) {
+			if (count > 0) {
+				int n = idx(count - 1);
+				if (x[n] == e.getX() && y[n] == e.getY() && z[n] == e.getZ()) return;   // nothing new arrived
+				double dx = e.getX() - x[n], dy = e.getY() - y[n], dz = e.getZ() - z[n];
+				if (dx * dx + dy * dy + dz * dz > 64.0) count = 0;   // teleport: don't slide across the map
+			}
+			head = (head + 1) % N;
+			if (count < N) count++;
+			t[head] = now; x[head] = e.getX(); y[head] = e.getY(); z[head] = e.getZ();
+			yaw[head] = e.getYRot(); pitch[head] = e.getXRot();
+		}
+
+		void sample(long rt, State st) {
+			int o = idx(0), n = idx(count - 1);
+			if (count == 1 || rt <= t[o]) { set(st, o, o, 0f); return; }
+			if (rt >= t[n]) { set(st, n, n, 0f); return; }
+			for (int i = 0; i < count - 1; i++) {
+				int a = idx(i), b = idx(i + 1);
+				if (rt >= t[a] && rt <= t[b]) {
+					float f = t[b] == t[a] ? 1f : (float) ((rt - t[a]) / (double) (t[b] - t[a]));
+					set(st, a, b, f);
+					return;
+				}
+			}
+			set(st, n, n, 0f);
+		}
+
+		private void set(State st, int a, int b, float f) {
+			st.x = Mth.lerp((double) f, x[a], x[b]);
+			st.y = Mth.lerp((double) f, y[a], y[b]);
+			st.z = Mth.lerp((double) f, z[a], z[b]);
+			st.yRot = Mth.rotLerp(f, yaw[a], yaw[b]);
+			st.xRot = Mth.lerp(f, pitch[a], pitch[b]);
+		}
+	}
+
+	private static final Map<ThrowingDiscEntity, Smoother> SMOOTHERS = new WeakHashMap<>();
+
 	@Override
 	public void extractRenderState(ThrowingDiscEntity entity, State state, float partialTick) {
 		super.extractRenderState(entity, state, partialTick);
-		// blend between the last and current tick so the turning is smooth at any frame rate / tick rate
-		// At normal speed the game's own position is already smooth, so use it as is. Only when the world runs slower
-		// than 20 ticks per second (/tick rate) blend our own previous-tick -> current-tick values, so the disc doesn't hop.
-		boolean slow = entity.level().tickRateManager().tickrate() < 19.5f;
-		if (slow) {
-			state.x = Mth.lerp((double) partialTick, entity.smX0, entity.smX1);
-			state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
-			state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
-			state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
-			state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
-		} else {
-			state.yRot = Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot());
-			state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
-		}
+		// Server updates arrive a little unevenly, and the game just jumps to each one. So remember when each position
+		// arrived and draw the disc about 1.5 ticks in the past, gliding between two real positions: smooth at any tick rate.
+		Smoother sm = SMOOTHERS.computeIfAbsent(entity, e -> new Smoother());
+		long now = System.nanoTime();
+		sm.record(now, entity);
+		float tps = Math.max(1f, entity.level().tickRateManager().tickrate());
+		long delay = (long) (1.5 * 1.0e9 / tps);
+		sm.sample(now - delay, state);
 		state.tilt = entity.getTilt();
 		state.spin = Mth.lerp(partialTick, entity.spinO, entity.spin);
 		// FIXED, not GROUND: the GROUND display transform shifts the model up by 2/16 of a block, and because the spin is around
@@ -65,14 +113,15 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 	public void submit(State state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
 		poseStack.pushPose();
 		// 26.3: PoseStack.mulPose takes a matrix, so the rotations are chained on one Matrix4f (applied in this order).
+		// The disc's face points along its direction of travel (yaw + pitch, always the real heading, also after a
+		// ricochet). It leans by the tilt (only at the turning point) and spins around the direction it is heading.
 		Matrix4f m = new Matrix4f()
-				.rotateY((float) Math.toRadians(180f - state.yRot))   // face travel direction
-				.rotateX((float) Math.toRadians(state.xRot))          // pitch along the path
-				.rotateZ((float) Math.toRadians(state.tilt))          // lean (return trip only)
-				.rotateX((float) Math.toRadians(90f))                 // lay the sprite flat
-				.rotateZ((float) Math.toRadians(state.spin));         // spin around its own axis
+				.rotateY((float) Math.toRadians(-state.yRot))
+				.rotateX((float) Math.toRadians(state.xRot))
+				.rotateY((float) Math.toRadians(state.tilt))
+				.rotateZ((float) Math.toRadians(state.spin));
 		poseStack.mulPose(m);
-		float sc = com.throwingdiscs.DiscConfig.RENDER_SCALE;
+		float sc = com.throwingdiscs.DiscConfig.renderScale;
 		poseStack.scale(sc, sc, sc);
 		state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);
 		poseStack.popPose();
