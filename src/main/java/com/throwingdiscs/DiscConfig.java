@@ -45,7 +45,7 @@ public final class DiscConfig {
 		double ricochetSpeedBonus = 0.20;
 		double ricochetRangeBonus = 1.0;
 		double baseRange = 9.5;
-		float renderScale = 1.0f;
+		float renderScale = 1.3f;
 		float returnTilt = 2.5f;
 		int pickupDelayTicks = 20;
 		float turnRate = 60.0f;
