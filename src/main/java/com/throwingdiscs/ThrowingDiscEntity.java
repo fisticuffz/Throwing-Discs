@@ -2,6 +2,7 @@ package com.throwingdiscs;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.Identifier;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -22,7 +23,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
@@ -51,6 +54,9 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	private static final int OUT = 0, TURN = 1, BACK = 2;
 
+	private static final SoundEvent SPEAR_PIERCE = SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath("minecraft", "item.spear.hit"));
+	private static final SoundEvent SPEAR_RETURN = SoundEvent.createVariableRangeEvent(Identifier.fromNamespaceAndPath("minecraft", "item.spear.use"));
+
 	/** every disc currently in flight on the server, so they can be handed back when their owner leaves the world */
 	private static final Set<ThrowingDiscEntity> ACTIVE = ConcurrentHashMap.newKeySet();
 
@@ -65,9 +71,9 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	private UUID ownerId;
 	private DiscType type = DiscType.IRON;
-	private int phase = OUT, phaseTick, age, returnSlot = -1;
+	private int phase = OUT, phaseTick, age, life, bounces, returnSlot = -1;
 	private boolean offhand, finished;
-	private double speed, traveled, range = DiscConfig.BASE_RANGE;
+	private double speed, traveled, range = DiscConfig.baseRange;
 	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
 	private final Map<Integer, Integer> hitCooldown = new HashMap<>();
 	/** Flight velocity kept in our own field: vanilla's delta movement gets zeroed by /tp, which froze the disc. */
@@ -113,7 +119,6 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		Vec3 d = dir.normalize();
 		setPos(owner.getEyePosition().add(d.scale(0.8)).add(0, -0.3, 0));
 		setDeltaMovement(d.scale(speed));
-		Vec3 facing = d.scale(-1);
 		flightVel = d.scale(speed);
 		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
 		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
@@ -142,6 +147,12 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		Player owner = ownerId == null ? null : sl.getPlayerByUUID(ownerId);
 		if (owner == null || owner.isRemoved() || owner.level() != level()) {
 			finish(sl, null, false);
+			return;
+		}
+
+		// touching the disc with its owner takes it back, once it has been out for a moment
+		if (++life >= DiscConfig.pickupDelayTicks && owner.getBoundingBox().intersects(getBoundingBox().inflate(0.1))) {
+			finish(sl, owner, true);
 			return;
 		}
 
@@ -184,14 +195,14 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				Vec3 normal = Vec3.atLowerCornerOf(hit.getDirection().getUnitVec3i());
 				double d = vel.dot(normal);
 				if (d < 0) vel = vel.subtract(normal.scale(2 * d));         // real reflection
-				range += DiscConfig.RICOCHET_RANGE;
-				speed = Math.min(speed * DiscConfig.RICOCHET_SPEEDUP, DiscConfig.speedCap(type));
+				bounces++;
+				range += DiscConfig.ricochetRangeBonus;
+				speed = Math.min(type.speed * (1.0 + DiscConfig.ricochetSpeedBonus * bounces), DiscConfig.speedCap(type));
 				vel = vel.normalize().scale(speed);
 				pos = hit.getLocation().add(normal.scale(DiscConfig.RADIUS + 0.01));
 				follow = DiscConfig.FOLLOW_BOOST;
 				hitCooldown.clear();
-				snd(sl, SoundEvents.TRIDENT_HIT_GROUND, 0.8f, type.pitch * (0.9f + random.nextFloat() * 0.3f));
-				snd(sl, SoundEvents.ANVIL_LAND, 0.15f, 1.8f);
+				snd(sl, SPEAR_PIERCE, 0.9f, type.pitch * (0.9f + random.nextFloat() * 0.3f));
 				break;                                                       // one ricochet per tick: no zig-zag in corners
 			}
 			pos = pos.add(step);
@@ -199,6 +210,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			setPos(pos);
 			hitEntities(sl, owner, pos);
 			if (finished) return;
+			chop(sl, owner);
 			if (traveled >= range) startReturn();
 		}
 		setPos(pos);
@@ -206,7 +218,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		setDeltaMovement(vel);
 		faceToward(vel, follow);
 		follow = Math.max(DiscConfig.FOLLOW_BASE, follow * 0.93f);
-		setTilt(Mth.lerp(0f, tilt, 0f));
+		setTilt(0f);   // no tilt while flying out or ricocheting
 	}
 
 	// ------------------------------------------------------------------ return trip
@@ -229,8 +241,9 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		}
 		hitEntities(sl, owner, pos);
 		smashPots(sl, owner, pos);
+		chop(sl, owner);
 		faceToward(chest(owner).subtract(pos), follow);
-		setTilt(Mth.lerp(0.45f, tilt, DiscConfig.RETURN_TILT * tiltSign));
+		setTilt(Mth.lerp(0.45f, tilt, DiscConfig.returnTilt * tiltSign));
 		if (++phaseTick >= DiscConfig.TURN_TICKS) {
 			phase = BACK;
 			phaseTick = 0;
@@ -254,9 +267,25 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		phaseTick++;
 		hitEntities(sl, owner, pos);
 		smashPots(sl, owner, pos);
+		chop(sl, owner);
 		faceToward(dir, 0.4f);
-		float k = dist > 5 ? 1f : dist > 2.5 ? 0.5f : 0f;                  // realigns while approaching
-		setTilt(Mth.lerp(0.25f, tilt, DiscConfig.RETURN_TILT * tiltSign * k));
+		setTilt(Mth.lerp(0.3f, tilt, 0f));                                   // straightens out on the way home
+	}
+
+	private static boolean choppable(BlockState s) {
+		return s.is(BlockTags.CROPS) || s.is(BlockTags.FLOWERS) || s.is(BlockTags.SAPLINGS)
+				|| s.is(Blocks.SHORT_GRASS) || s.is(Blocks.TALL_GRASS) || s.is(Blocks.FERN) || s.is(Blocks.LARGE_FERN)
+				|| s.is(Blocks.DEAD_BUSH) || s.is(Blocks.SUGAR_CANE);
+	}
+
+	/** Cuts crops and plants the disc flies through (wheat, tall grass, sugar cane, dead bushes...); they drop their loot. */
+	private void chop(ServerLevel sl, Player owner) {
+		AABB box = getBoundingBox().inflate(0.25, 0.4, 0.25);
+		BlockPos lo = BlockPos.containing(box.minX, box.minY, box.minZ);
+		BlockPos hi = BlockPos.containing(box.maxX, box.maxY, box.maxZ);
+		for (BlockPos p : BlockPos.betweenClosed(lo, hi)) {
+			if (choppable(sl.getBlockState(p))) sl.destroyBlock(p.immutable(), true, owner);
+		}
 	}
 
 	private void smashPots(ServerLevel sl, Player owner, Vec3 pos) {
@@ -267,11 +296,11 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	// ------------------------------------------------------------------ orientation
 	private void faceToward(Vec3 dir, float f) {
 		if (dir.lengthSqr() < 1e-6) return;
-		float ty = (float) (Math.atan2(dir.x, -dir.z) * Mth.RAD_TO_DEG);
+		float ty = (float) (Math.atan2(-dir.x, dir.z) * Mth.RAD_TO_DEG);
 		float tp = (float) (-Math.asin(Mth.clamp(dir.y / dir.length(), -1, 1)) * Mth.RAD_TO_DEG);
 		// turn toward the direction of travel at a steady speed (no lag, no overshoot): exact while flying straight,
 		// and a bounce / the return turn swings round smoothly instead of snapping
-		float max = DiscConfig.TURN_RATE;
+		float max = DiscConfig.turnRate;
 		float dy = Mth.wrapDegrees(ty - getYRot());
 		float dp = Mth.wrapDegrees(tp - getXRot());
 		setYRot(getYRot() + Mth.clamp(dy, -max, max));
@@ -331,7 +360,10 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				placed = true;
 			}
 			if (!placed && !owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
-			if (caught) snd(sl, SoundEvents.TRIDENT_RETURN, 0.7f, type.pitch * 1.2f);
+			if (caught) {
+					snd(sl, SPEAR_RETURN, 0.7f, type.pitch * 1.3f);
+					snd(sl, SoundEvents.ITEM_PICKUP, 0.4f, 1.5f);
+				}
 		}
 		discard();
 	}

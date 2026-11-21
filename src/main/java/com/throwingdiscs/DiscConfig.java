@@ -8,46 +8,66 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Tuning values. config/throwing_discs.json is created on first start.
- * maxSpeedMultiplier: 0   = speed keeps growing with every ricochet (only HARD_SPEED_CAP applies)
- *                     1.5 = speed stops growing at 1.5x the disc's starting speed
+ * Tuning values. config/throwing_discs.json is created on first start (and any new setting is added to it);
+ * edit it and restart the game to change things, no rebuild needed.
+ *
+ * maxSpeedMultiplier : speed stops growing at this many times the disc's starting speed (0 = only HARD_SPEED_CAP applies)
+ * ricochetSpeedBonus : each ricochet adds this much of the starting speed (0.2 = +20% per ricochet)
+ * ricochetRangeBonus : each ricochet adds this many blocks of range
+ * baseRange          : blocks it flies before it turns back
+ * renderScale        : how big the disc is drawn (1.0 = 0.5 blocks wide, the size of its hitbox)
+ * returnTilt         : degrees the disc leans when it reaches its end point and turns back (ricochets never tilt)
+ * pickupDelayTicks   : the owner can touch the disc to take it back after this many ticks (20 = 1 second)
+ * turnRate           : max degrees per tick the disc turns toward where it is going (higher = snappier)
  */
 public final class DiscConfig {
-	public static final double BASE_RANGE = 9.5;        // blocks before it returns
-	public static final double RICOCHET_RANGE = 2.0;     // extra range per ricochet
-	public static final double RICOCHET_SPEEDUP = 1.10;  // speed multiplier per ricochet
 	public static final double HARD_SPEED_CAP = 4.0;     // blocks per tick, safety limit
 	public static final double RADIUS = 0.3;             // clearance kept from walls
 	public static final int TURN_TICKS = 8;              // brake + turn phase length
 	public static final int ACCEL_TICKS = 12;
 	public static final double CATCH_DISTANCE = 0.2;     // caught right before it touches you
-	public static final float FOLLOW_BASE = 0.45f;       // facing speed while flying
-	public static final float FOLLOW_BOOST = 0.65f;      // facing speed right after a ricochet
-	/** true: the disc stays level like a frisbee even when flying up/down; false: it pitches along its path. */
-	/** max degrees the disc turns per tick toward its direction of travel (lower = slower, smoother swing). */
-	public static final float TURN_RATE = 30.0f;
-	/** how big the disc is drawn. 1.0 = 0.5 blocks wide, which is exactly its hitbox. Bigger number = bigger disc. */
-	public static final float RENDER_SCALE = 1.0f;
-	public static final boolean KEEP_LEVEL = false;
-	public static final float RETURN_TILT = 0.0f;        // degrees, return trip only. Ricochets stay flat.
+	public static final float FOLLOW_BASE = 0.45f;
+	public static final float FOLLOW_BOOST = 0.65f;
 	public static final int MAX_FLIGHT_TICKS = 1200;
 
 	public static double maxSpeedMultiplier = 1.5;
+	public static double ricochetSpeedBonus = 0.20;
+	public static double ricochetRangeBonus = 1.0;
+	public static double baseRange = 9.5;
+	public static float renderScale = 1.3f;
+	public static float returnTilt = 2.5f;
+	public static int pickupDelayTicks = 20;
+	public static float turnRate = 60.0f;
 
 	private static class Data {
 		double maxSpeedMultiplier = 1.5;
+		double ricochetSpeedBonus = 0.20;
+		double ricochetRangeBonus = 1.0;
+		double baseRange = 9.5;
+		float renderScale = 1.3f;
+		float returnTilt = 2.5f;
+		int pickupDelayTicks = 20;
+		float turnRate = 60.0f;
 	}
 
 	public static void load() {
 		Gson gson = new GsonBuilder().setPrettyPrinting().create();
 		Path file = FabricLoader.getInstance().getConfigDir().resolve("throwing_discs.json");
 		try {
+			Data d = new Data();
 			if (Files.exists(file)) {
-				Data d = gson.fromJson(Files.readString(file), Data.class);
-				if (d != null) maxSpeedMultiplier = d.maxSpeedMultiplier;
-			} else {
-				Files.writeString(file, gson.toJson(new Data()));
+				Data read = gson.fromJson(Files.readString(file), Data.class);
+				if (read != null) d = read;
 			}
+			maxSpeedMultiplier = d.maxSpeedMultiplier;
+			ricochetSpeedBonus = d.ricochetSpeedBonus;
+			ricochetRangeBonus = d.ricochetRangeBonus;
+			baseRange = d.baseRange;
+			renderScale = d.renderScale;
+			returnTilt = d.returnTilt;
+			pickupDelayTicks = d.pickupDelayTicks;
+			turnRate = d.turnRate;
+			Files.writeString(file, gson.toJson(d));   // writes any settings that were missing
 		} catch (Exception e) {
 			ThrowingDiscsMod.LOGGER.warn("Could not read throwing_discs.json, using defaults", e);
 		}
