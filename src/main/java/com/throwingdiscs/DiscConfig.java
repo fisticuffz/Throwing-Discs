@@ -29,6 +29,7 @@ public final class DiscConfig {
 	public static final float FOLLOW_BASE = 0.45f;
 	public static final float FOLLOW_BOOST = 0.65f;
 	public static final int MAX_FLIGHT_TICKS = 1200;
+	public static final int RENDER_LAYERS = 4;           // the disc is drawn this many pixels thick (1 = flat sheet)
 
 	public static double maxSpeedMultiplier = 1.5;
 	public static double ricochetSpeedBonus = 0.20;
