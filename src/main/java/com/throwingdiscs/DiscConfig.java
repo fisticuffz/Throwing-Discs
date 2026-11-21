@@ -13,14 +13,14 @@ import java.nio.file.Path;
  *                     1.5 = speed stops growing at 1.5x the disc's starting speed
  */
 public final class DiscConfig {
-	public static final double BASE_RANGE = 9.5;        // blocks before it returns
-	public static final double RICOCHET_RANGE = 4.5;     // extra range per ricochet
+	public static final double BASE_RANGE = 10;        // blocks before it returns
+	public static final double RICOCHET_RANGE = 5;     // extra range per ricochet
 	public static final double RICOCHET_SPEEDUP = 1.0;  // speed multiplier per ricochet
-	public static final double HARD_SPEED_CAP = 5.0;     // blocks per tick, safety limit
+	public static final double HARD_SPEED_CAP = 6.0;     // blocks per tick, safety limit
 	public static final double RADIUS = 0.3;             // clearance kept from walls
 	public static final int TURN_TICKS = 8;              // brake + turn phase length
 	public static final int ACCEL_TICKS = 12;
-	public static final double CATCH_DISTANCE = 0.2;     // caught right before it touches you
+	public static final double CATCH_DISTANCE = 0.3;     // caught right before it touches you
 	public static final float FOLLOW_BASE = 0.85f;       // facing speed while flying
 	public static final float FOLLOW_BOOST = 0.85f;      // facing speed right after a ricochet
 	/** true: the disc stays level like a frisbee even when flying up/down; false: it pitches along its path. */
