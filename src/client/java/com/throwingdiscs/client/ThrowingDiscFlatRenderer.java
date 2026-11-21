@@ -1,6 +1,7 @@
 package com.throwingdiscs.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.throwingdiscs.DiscConfig;
 import com.throwingdiscs.ThrowingDiscEntity;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
@@ -121,9 +122,18 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 				.rotateY((float) Math.toRadians(state.tilt))
 				.rotateZ((float) Math.toRadians(state.spin));
 		poseStack.mulPose(m);
-		float sc = com.throwingdiscs.DiscConfig.renderScale;
+		float sc = DiscConfig.renderScale;
 		poseStack.scale(sc, sc, sc);
-		state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);
+		// The item model is only one pixel thick, so from the side the disc looked like a flat sheet. Draw it several times,
+		// stacked face to face (each layer is one model-thickness apart), so the disc has a real edge like a coin.
+		int layers = DiscConfig.RENDER_LAYERS;
+		float gap = 0.5f / 16f;   // one pixel of thickness after the item display scale
+		for (int i = 0; i < layers; i++) {
+			poseStack.pushPose();
+			poseStack.translate(0f, 0f, (i - (layers - 1) / 2f) * gap);
+			state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);
+			poseStack.popPose();
+		}
 		poseStack.popPose();
 	}
 }
