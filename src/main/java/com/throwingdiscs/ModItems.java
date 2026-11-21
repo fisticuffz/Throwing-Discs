@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.DispenserBlock;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -39,6 +40,7 @@ public final class ModItems {
 					.repairable(repairItem(t));
 			Item item = new ThrowingDiscItem(t, props);
 			ITEMS.put(t, Registry.register(BuiltInRegistries.ITEM, key, item));
+			DispenserBlock.registerBehavior(item, new DiscDispenseBehavior(t));
 		}
 		// Combat tab: right after the Trident (the other throwing weapon), next to the axes and mace.
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.COMBAT).register(tab -> {

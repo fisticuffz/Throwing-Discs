@@ -1,7 +1,11 @@
 package com.throwingdiscs;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.block.entity.DispenserBlockEntity;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -69,6 +73,9 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	private DiscType type = DiscType.IRON;
 	private int phase = OUT, phaseTick, age, returnSlot = -1;
 	private boolean offhand, finished;
+	private boolean dispensed;      // thrown by a dispenser (no owner): it flies back to the dispenser
+	private BlockPos home;
+	private double flyMul = 1.0;    // Fly enchantment speed multiplier
 	private int life;   // ticks since it was thrown (server)
 	private double speed, traveled, range = DiscConfig.BASE_RANGE;
 	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
@@ -111,7 +118,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		this.type = type;
 		this.offhand = offhand;
 		this.returnSlot = slot;
-		this.speed = type.speed;
+		applyEnchants(owner.level(), stack, type);
 		this.entityData.set(DATA_ITEM, stack);
 		Vec3 d = dir.normalize();
 		setPos(owner.getEyePosition().add(d.scale(0.8)).add(0, -0.3, 0));
@@ -120,6 +127,43 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		flightVel = d.scale(speed);
 		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
 		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
+	}
+
+	/** Thrown out of a dispenser: flies like a normal throw, then returns into the dispenser. */
+	public void launchFromDispenser(BlockPos pos, Direction facing, ItemStack stack, DiscType type) {
+		this.dispensed = true;
+		this.home = pos;
+		ACTIVE.add(this);
+		this.type = type;
+		applyEnchants(level(), stack, type);
+		this.entityData.set(DATA_ITEM, stack);
+		Vec3 d = Vec3.atLowerCornerOf(facing.getUnitVec3i()).normalize();
+		setPos(Vec3.atCenterOf(pos).add(d.scale(0.7)));
+		flightVel = d.scale(speed);
+		setDeltaMovement(flightVel);
+		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
+		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
+	}
+
+	/** Fly = faster, Free Bird = longer range (both read from the disc's enchantments). */
+	private void applyEnchants(Level level, ItemStack stack, DiscType type) {
+		int fly = enchantLevel(level, stack, "fly");
+		int free = enchantLevel(level, stack, "free_bird");
+		this.flyMul = 1.0 + DiscConfig.FLY_SPEED_PER_LEVEL * fly;
+		this.speed = type.speed * flyMul;
+		this.range = DiscConfig.BASE_RANGE + DiscConfig.FREE_BIRD_RANGE_PER_LEVEL * free;
+	}
+
+	private static int enchantLevel(Level level, ItemStack stack, String path) {
+		ResourceKey<net.minecraft.world.item.enchantment.Enchantment> key =
+				ResourceKey.create(Registries.ENCHANTMENT, ThrowingDiscsMod.id(path));
+		return level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).get(key)
+				.map(h -> EnchantmentHelper.getItemEnchantmentLevel(h, stack)).orElse(0);
+	}
+
+	private void returnToDispenser(ServerLevel sl, ItemStack stack) {
+		if (dispensed && home != null && sl.getBlockEntity(home) instanceof DispenserBlockEntity d && d.addItem(stack) >= 0) return;
+		spawnAtLocation(sl, stack);
 	}
 
 	// ------------------------------------------------------------------ tick
@@ -143,7 +187,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		if (finished) return;
 		ServerLevel sl = (ServerLevel) level();
 		Player owner = ownerId == null ? null : sl.getPlayerByUUID(ownerId);
-		if (owner == null || owner.isRemoved() || owner.level() != level()) {
+		if (!dispensed && (owner == null || owner.isRemoved() || owner.level() != level())) {
 			finish(sl, null, false);
 			return;
 		}
@@ -194,7 +238,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				double d = vel.dot(normal);
 				if (d < 0) vel = vel.subtract(normal.scale(2 * d));         // real reflection
 				range += DiscConfig.RICOCHET_RANGE;
-				speed = Math.min(speed * DiscConfig.RICOCHET_SPEEDUP, DiscConfig.speedCap(type));
+				speed = Math.min(speed * DiscConfig.RICOCHET_SPEEDUP, DiscConfig.speedCap(type) * flyMul);
 				vel = vel.normalize().scale(speed);
 				pos = hit.getLocation().add(normal.scale(DiscConfig.RADIUS + 0.01));
 				follow = DiscConfig.FOLLOW_BOOST;
@@ -225,6 +269,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	// ------------------------------------------------------------------ return trip
 	private Vec3 chest(Player owner) {
+		if (owner == null) return Vec3.atCenterOf(home);   // dispensed: fly back to the dispenser
 		return owner.position().add(0, owner.getBbHeight() * 0.6, 0);
 	}
 
@@ -255,12 +300,12 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		Vec3 pos = position();
 		Vec3 toTarget = chest(owner).subtract(pos);
 		double dist = toTarget.length();
-		if (dist <= DiscConfig.CATCH_DISTANCE || owner.getBoundingBox().inflate(0.1).contains(pos)) {
+		if (dist <= (owner == null ? 0.7 : DiscConfig.CATCH_DISTANCE) || (owner != null && owner.getBoundingBox().inflate(0.1).contains(pos))) {
 			finish(sl, owner, true);
 			return;
 		}
 		double t = Math.min(1.0, phaseTick / (double) DiscConfig.ACCEL_TICKS);
-		double spd = Mth.lerp(t, 0.12, type.speed * 1.1);
+		double spd = Mth.lerp(t, 0.12, type.speed * flyMul * 1.1);
 		Vec3 dir = toTarget.normalize();
 		pos = pos.add(dir.scale(Math.min(spd, dist)));
 		setPos(pos);
@@ -298,7 +343,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	/** True if the owner touches the disc (after it has been in the air for 1 second). Checks the whole path it just flew. */
 	private boolean ownerTouches(Player owner, Vec3 from, Vec3 to) {
-		if (life < 20) return false;
+		if (owner == null || life < 20) return false;
 		AABB box = owner.getBoundingBox().inflate(0.2);
 		return box.contains(to) || box.clip(from, to).isPresent();
 	}
@@ -357,7 +402,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		finished = true;
 		ItemStack stack = getItem().copy();
 		if (owner == null) {
-			spawnAtLocation(sl, stack);
+			returnToDispenser(sl, stack);
 		} else {
 			boolean placed = false;
 			if (offhand) {
@@ -384,7 +429,8 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			ItemStack stack = getItem().copy();
 			if (level() instanceof ServerLevel sl) {
 				Player owner = ownerId == null ? null : sl.getPlayerByUUID(ownerId);
-				if (owner != null && !owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
+				if (owner == null) returnToDispenser(sl, stack);
+				else if (!owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
 			}
 		}
 		super.remove(reason);

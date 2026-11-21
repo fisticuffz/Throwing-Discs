@@ -31,6 +31,8 @@ public final class DiscConfig {
 	public static final boolean KEEP_LEVEL = false;
 	public static final float RETURN_TILT = 0.0f;        // degrees, return trip only. Ricochets stay flat.
 	public static final int MAX_FLIGHT_TICKS = 1200;
+	public static final double FLY_SPEED_PER_LEVEL = 0.25;       // Fly: +25% speed per level
+	public static final double FREE_BIRD_RANGE_PER_LEVEL = 3.0;  // Free Bird: +3 blocks range per level
 
 	public static double maxSpeedMultiplier = 1.5;
 
