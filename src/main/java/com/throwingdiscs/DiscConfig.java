@@ -16,7 +16,7 @@ public final class DiscConfig {
 	public static final double BASE_RANGE = 10;        // blocks before it returns
 	public static final double RICOCHET_RANGE = 5;     // extra range per ricochet
 	public static final double RICOCHET_SPEEDUP = 1.0;  // speed multiplier per ricochet
-	public static final double HARD_SPEED_CAP = 6.0;     // blocks per tick, safety limit
+	public static final double HARD_SPEED_CAP = 4.5;     // blocks per tick, safety limit
 	public static final double RADIUS = 0.3;             // clearance kept from walls
 	public static final int TURN_TICKS = 8;              // brake + turn phase length
 	public static final int ACCEL_TICKS = 12;
@@ -27,7 +27,7 @@ public final class DiscConfig {
 	/** max degrees the disc turns per tick toward its direction of travel (lower = slower, smoother swing). */
 	public static final float TURN_RATE = 30.0f;
 	/** how big the disc is drawn. 1.0 = 0.5 blocks wide, which is exactly its hitbox. Bigger number = bigger disc. */
-	public static final float RENDER_SCALE = 0.8f;
+	public static final float RENDER_SCALE = 0.9f;
 	public static final boolean KEEP_LEVEL = false;
 	public static final float RETURN_TILT = 0.0f;        // degrees, return trip only. Ricochets stay flat.
 	public static final int MAX_FLIGHT_TICKS = 1200;
