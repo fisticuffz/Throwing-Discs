@@ -15,7 +15,7 @@ import java.nio.file.Path;
 public final class DiscConfig {
 	public static final double BASE_RANGE = 9.5;        // blocks before it returns
 	public static final double RICOCHET_RANGE = 4.5;     // extra range per ricochet
-	public static final double RICOCHET_SPEEDUP = 0.40;  // speed multiplier per ricochet
+	public static final double RICOCHET_SPEEDUP = 1.0;  // speed multiplier per ricochet
 	public static final double HARD_SPEED_CAP = 5.0;     // blocks per tick, safety limit
 	public static final double RADIUS = 0.3;             // clearance kept from walls
 	public static final int TURN_TICKS = 8;              // brake + turn phase length
