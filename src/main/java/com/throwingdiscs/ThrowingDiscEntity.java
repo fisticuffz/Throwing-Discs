@@ -230,7 +230,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		hitEntities(sl, owner, pos);
 		smashPots(sl, owner, pos);
 		faceToward(chest(owner).subtract(pos), follow);
-		setTilt(Mth.lerp(0.45f, tilt, DiscConfig.RETURN_TILT * tiltSign));
+		setTilt(Mth.lerp(0f, tilt, DiscConfig.RETURN_TILT * tiltSign));
 		if (++phaseTick >= DiscConfig.TURN_TICKS) {
 			phase = BACK;
 			phaseTick = 0;
