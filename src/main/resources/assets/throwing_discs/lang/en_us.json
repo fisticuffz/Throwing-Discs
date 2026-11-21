@@ -4,5 +4,7 @@
   "item.throwing_discs.iron_disc": "Iron Throwing Disc",
   "item.throwing_discs.gold_disc": "Golden Throwing Disc",
   "item.throwing_discs.diamond_disc": "Diamond Throwing Disc",
-  "item.throwing_discs.netherite_disc": "Netherite Throwing Disc"
+  "item.throwing_discs.netherite_disc": "Netherite Throwing Disc",
+  "enchantment.throwing_discs.fly": "Fly",
+  "enchantment.throwing_discs.free_bird": "Free Bird"
 }
