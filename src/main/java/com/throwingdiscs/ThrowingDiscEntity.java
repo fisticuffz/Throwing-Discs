@@ -22,7 +22,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ItemSupplier;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.tags.BlockTags;
@@ -154,8 +156,10 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	}
 
 	private static int enchantLevel(Level level, ItemStack stack, String path) {
-		ResourceKey<net.minecraft.world.item.enchantment.Enchantment> key =
-				ResourceKey.create(Registries.ENCHANTMENT, ThrowingDiscsMod.id(path));
+		return enchantLevel(level, stack, ResourceKey.create(Registries.ENCHANTMENT, ThrowingDiscsMod.id(path)));
+	}
+
+	private static int enchantLevel(Level level, ItemStack stack, ResourceKey<Enchantment> key) {
 		return level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).get(key)
 				.map(h -> EnchantmentHelper.getItemEnchantmentLevel(h, stack)).orElse(0);
 	}
@@ -384,7 +388,10 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			DamageSource src = sl.damageSources().thrown(this, owner);
 			float dmg = EnchantmentHelper.modifyDamage(sl, stack, e, src, type.damage);   // Sharpness etc.
 			e.hurtServer(sl, src, dmg);
-			EnchantmentHelper.doPostAttackEffectsWithItemSource(sl, e, src, stack);       // Fire Aspect etc.
+			EnchantmentHelper.doPostAttackEffectsWithItemSource(sl, e, src, stack);
+			// Vanilla Fire Aspect only fires for direct melee hits, so a thrown disc ignites by hand: 4 s per level.
+			int fire = enchantLevel(sl, stack, Enchantments.FIRE_ASPECT);
+			if (fire > 0) e.igniteForSeconds(4.0f * fire);
 			snd(sl, DiscSounds.HIT, 0.8f, type.pitch * 1.2f);
 			wear(sl, owner);
 			if (finished) return;
