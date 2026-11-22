@@ -40,20 +40,13 @@ public class ThrowingDiscFlatRenderer extends EntityRenderer<ThrowingDiscEntity,
 	@Override
 	public void extractRenderState(ThrowingDiscEntity entity, State state, float partialTick) {
 		super.extractRenderState(entity, state, partialTick);
-		// blend between the last and current tick so the turning is smooth at any frame rate / tick rate
-		// At normal speed the game's own position is already smooth, so use it as is. Only when the world runs slower
-		// than 20 ticks per second (/tick rate) blend our own previous-tick -> current-tick values, so the disc doesn't hop.
-		boolean slow = entity.level().tickRateManager().tickrate() < 19.5f;
-		if (slow) {
-			state.x = Mth.lerp((double) partialTick, entity.smX0, entity.smX1);
-			state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
-			state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
-			state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
-			state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
-		} else {
-			state.yRot = Mth.rotLerp(partialTick, entity.yRotO, entity.getYRot());
-			state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.xRotO, entity.getXRot());
-		}
+		// Always draw the disc between its previous-tick and current-tick position/rotation (recorded in the entity's client tick).
+		// The game snaps this entity to each server update, so using its own position made the movement hop ("buffering").
+		state.x = Mth.lerp((double) partialTick, entity.smX0, entity.smX1);
+		state.y = Mth.lerp((double) partialTick, entity.smY0, entity.smY1);
+		state.z = Mth.lerp((double) partialTick, entity.smZ0, entity.smZ1);
+		state.yRot = Mth.rotLerp(partialTick, entity.smYaw0, entity.smYaw1);
+		state.xRot = com.throwingdiscs.DiscConfig.KEEP_LEVEL ? 0f : Mth.lerp(partialTick, entity.smPitch0, entity.smPitch1);
 		state.tilt = entity.getTilt();
 		state.spin = Mth.lerp(partialTick, entity.spinO, entity.spin);
 		// FIXED, not GROUND: the GROUND display transform shifts the model up by 2/16 of a block, and because the spin is around
