@@ -126,7 +126,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		setDeltaMovement(d.scale(speed));
 		Vec3 facing = d.scale(-1);
 		flightVel = d.scale(speed);
-		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
+		setYRot((float) (Math.atan2(d.x, -d.z) * Mth.RAD_TO_DEG));   // same convention as faceToward()
 		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
 	}
 
@@ -142,7 +142,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		setPos(Vec3.atCenterOf(pos).add(d.scale(0.7)));
 		flightVel = d.scale(speed);
 		setDeltaMovement(flightVel);
-		setYRot((float) (Math.atan2(-d.x, d.z) * Mth.RAD_TO_DEG));
+		setYRot((float) (Math.atan2(d.x, -d.z) * Mth.RAD_TO_DEG));   // same convention as faceToward()
 		setXRot((float) (-Math.asin(Mth.clamp(d.y, -1, 1)) * Mth.RAD_TO_DEG));
 	}
 
