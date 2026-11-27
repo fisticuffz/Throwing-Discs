@@ -30,6 +30,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.portal.Portal;
+import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.AABB;
@@ -78,6 +80,11 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	private BlockPos home;
 	private double flyMul = 1.0;    // Fly enchantment speed multiplier
 	private int life;   // ticks since it was thrown (server)
+	private static final int TOUCH_CATCH_TICKS = 10;   // touch it after 0.5 s to catch it
+	private ResourceKey<Level> originDim;   // owner's dimension, set when the disc went through a nether portal
+	private Vec3 originEntryPos;            // where it entered the portal there
+	private Vec3 arrivalPos;                // where it arrived here (the portal it flies back through)
+	private int portalCooldown;
 	private double speed, traveled, range = DiscConfig.BASE_RANGE;
 	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
 	private final Map<Integer, Integer> hitCooldown = new HashMap<>();
@@ -177,6 +184,71 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		spawnAtLocation(sl, stack);
 	}
 
+	// ------------------------------------------------------------------ owner / nether portals
+	/** The owner wherever they are (any dimension). */
+	private Player findOwner(ServerLevel sl) {
+		return ownerId == null ? null : sl.getServer().getPlayerList().getPlayer(ownerId);
+	}
+
+	private ThrowingDiscEntity cloneInto(ServerLevel dest, Vec3 at) {
+		ThrowingDiscEntity d = new ThrowingDiscEntity(ModEntities.DISC, dest);
+		d.ownerId = ownerId; d.type = type; d.phase = phase; d.phaseTick = phaseTick; d.age = age; d.life = life;
+		d.returnSlot = returnSlot; d.offhand = offhand; d.flyMul = flyMul; d.speed = speed; d.traveled = traveled; d.range = range;
+		d.tilt = tilt; d.tiltSign = tiltSign; d.follow = follow; d.flightVel = flightVel;
+		d.originDim = originDim; d.originEntryPos = originEntryPos; d.arrivalPos = arrivalPos;
+		d.entityData.set(DATA_ITEM, getItem().copy());
+		d.entityData.set(DATA_TILT, tilt);
+		d.setPos(at);
+		d.setDeltaMovement(flightVel);
+		d.setYRot(getYRot());
+		d.setXRot(getXRot());
+		return d;
+	}
+
+	private void spawnTransferred(ServerLevel dest, ThrowingDiscEntity d) {
+		ACTIVE.add(d);
+		dest.addFreshEntity(d);
+		finished = true;   // the copy carries on; this one just disappears (no item is handed out)
+		discard();
+	}
+
+	/** Flew into a nether portal: carry on in the other dimension, remembering the way back. */
+	private boolean tryPortal(ServerLevel sl, Player owner, Vec3 pos) {
+		if (dispensed || owner == null || portalCooldown > 0) return false;
+		BlockPos bp = BlockPos.containing(pos);
+		if (!sl.getBlockState(bp).is(Blocks.NETHER_PORTAL)) return false;
+		TeleportTransition t = ((Portal) Blocks.NETHER_PORTAL).getPortalDestination(sl, this, bp);
+		if (t == null || t.newLevel() == sl) return false;
+		ServerLevel dest = t.newLevel();
+		Vec3 at = t.position().add(0, 1.0, 0);
+		ThrowingDiscEntity d = cloneInto(dest, at);
+		if (originDim != null && dest.dimension().equals(originDim)) {       // back in the owner's dimension
+			d.originDim = null; d.originEntryPos = null; d.arrivalPos = null;
+		} else if (originDim == null) {                                      // first crossing
+			d.originDim = sl.dimension(); d.originEntryPos = pos; d.arrivalPos = at;
+		} else {
+			d.arrivalPos = at;
+		}
+		d.portalCooldown = 40;
+		spawnTransferred(dest, d);
+		return true;
+	}
+
+	/** Returning: the disc reached the portal it came through and goes back to the owner's dimension. */
+	private void portalBack(ServerLevel sl, Player owner) {
+		ServerLevel origin = originDim == null ? null : sl.getServer().getLevel(originDim);
+		if (origin == null || originEntryPos == null) {
+			finish(sl, owner, false);
+			return;
+		}
+		ThrowingDiscEntity d = cloneInto(origin, originEntryPos);
+		d.originDim = null; d.originEntryPos = null; d.arrivalPos = null;
+		d.phase = BACK;
+		d.phaseTick = DiscConfig.ACCEL_TICKS;
+		d.portalCooldown = 40;
+		spawnTransferred(origin, d);
+	}
+
 	// ------------------------------------------------------------------ tick
 	@Override
 	public void tick() {
@@ -197,11 +269,19 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		}
 		if (finished) return;
 		ServerLevel sl = (ServerLevel) level();
-		Player owner = ownerId == null ? null : sl.getPlayerByUUID(ownerId);
-		if (!dispensed && (owner == null || owner.isRemoved() || owner.level() != level())) {
-			finish(sl, null, false);
-			return;
+		Player owner = ownerId == null ? null : findOwner(sl);
+		if (!dispensed) {
+			if (owner == null || owner.isRemoved()) {
+				finish(sl, null, false);
+				return;
+			}
+			// owner is in another dimension and we have no portal to fly back through: hand the disc over
+			if (owner.level() != level() && (originDim == null || owner.level().dimension() != originDim)) {
+				finish(sl, owner, false);
+				return;
+			}
 		}
+		if (portalCooldown > 0) portalCooldown--;
 
 		life++;
 		if (phase != BACK && ownerTouches(owner, position(), position())) {   // you walked into it
@@ -264,6 +344,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			hitEntities(sl, owner, pos);
 			if (finished) return;
 			chop(sl, owner, pos);
+			if (tryPortal(sl, owner, pos)) return;   // nether portal: continue in the other dimension
 			if (ownerTouches(owner, prevPos, pos)) {   // you ran into it mid-flight
 				finish(sl, owner, true);
 				return;
@@ -281,6 +362,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	// ------------------------------------------------------------------ return trip
 	private Vec3 chest(Player owner) {
 		if (owner == null) return Vec3.atCenterOf(home);   // dispensed: fly back to the dispenser
+		if (owner.level() != level()) return arrivalPos != null ? arrivalPos : position();   // owner is elsewhere: head for the portal we came through
 		return owner.position().add(0, owner.getBbHeight() * 0.6, 0);
 	}
 
@@ -309,9 +391,14 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	private void back(ServerLevel sl, Player owner) {
 		Vec3 pos = position();
+		if (owner != null && owner.level() != level() && arrivalPos != null && pos.distanceTo(arrivalPos) <= 1.5) {   // back through the portal
+			portalBack(sl, owner);
+			return;
+		}
 		Vec3 toTarget = chest(owner).subtract(pos);
 		double dist = toTarget.length();
-		if (dist <= (owner == null ? 0.7 : DiscConfig.CATCH_DISTANCE) || (owner != null && owner.getBoundingBox().inflate(0.1).contains(pos))) {
+		boolean ownerHere = owner != null && owner.level() == level();
+		if (ownerHere ? (dist <= DiscConfig.CATCH_DISTANCE || owner.getBoundingBox().inflate(0.1).contains(pos)) : (owner == null && dist <= 0.7)) {
 			finish(sl, owner, true);
 			return;
 		}
@@ -352,9 +439,9 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 				|| st.is(Blocks.DEAD_BUSH) || st.is(Blocks.SUGAR_CANE);
 	}
 
-	/** True if the owner touches the disc (after it has been in the air for 1 second). Checks the whole path it just flew. */
+	/** True if the owner touches the disc (after it has been in the air for 0.5 second). Checks the whole path it just flew. */
 	private boolean ownerTouches(Player owner, Vec3 from, Vec3 to) {
-		if (owner == null || life < 20) return false;
+		if (owner == null || owner.level() != level() || life < TOUCH_CATCH_TICKS) return false;
 		AABB box = owner.getBoundingBox().inflate(0.2);
 		return box.contains(to) || box.clip(from, to).isPresent();
 	}
@@ -442,7 +529,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			finished = true;
 			ItemStack stack = getItem().copy();
 			if (level() instanceof ServerLevel sl) {
-				Player owner = ownerId == null ? null : sl.getPlayerByUUID(ownerId);
+				Player owner = ownerId == null ? null : findOwner(sl);
 				if (owner == null) returnToDispenser(sl, stack);
 				else if (!owner.getInventory().add(stack)) owner.spawnAtLocation(sl, stack);
 			}
