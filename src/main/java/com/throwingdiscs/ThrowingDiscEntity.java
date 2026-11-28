@@ -85,6 +85,8 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	private Vec3 originEntryPos;            // where it entered the portal there
 	private Vec3 arrivalPos;                // where it arrived here (the portal it flies back through)
 	private int portalCooldown;
+	private ServerLevel forcedLevel;                                      // chunks we force-loaded around the arrival point
+	private final java.util.List<int[]> forcedChunks = new java.util.ArrayList<>();
 	private double speed, traveled, range = DiscConfig.BASE_RANGE;
 	private float follow = DiscConfig.FOLLOW_BASE, tilt, tiltSign = 1f;
 	private final Map<Integer, Integer> hitCooldown = new HashMap<>();
@@ -205,7 +207,28 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 		return d;
 	}
 
+	/** The disc is far from every player in the other dimension: force-load the chunks around it so it keeps flying. */
+	private void forceArea(ServerLevel lvl, Vec3 center) {
+		releaseForced();
+		forcedLevel = lvl;
+		int cx = Mth.floor(center.x) >> 4, cz = Mth.floor(center.z) >> 4;
+		for (int dx = -2; dx <= 2; dx++) {
+			for (int dz = -2; dz <= 2; dz++) {
+				if (lvl.setChunkForced(cx + dx, cz + dz, true)) forcedChunks.add(new int[]{cx + dx, cz + dz});   // only undo what we forced
+			}
+		}
+	}
+
+	private void releaseForced() {
+		if (forcedLevel == null) return;
+		for (int[] c : forcedChunks) forcedLevel.setChunkForced(c[0], c[1], false);
+		forcedChunks.clear();
+		forcedLevel = null;
+	}
+
 	private void spawnTransferred(ServerLevel dest, ThrowingDiscEntity d) {
+		releaseForced();
+		if (d.originDim != null) d.forceArea(dest, d.position());      // away from the owner: keep the area loaded
 		ACTIVE.add(d);
 		dest.addFreshEntity(d);
 		finished = true;   // the copy carries on; this one just disappears (no item is handed out)
@@ -213,10 +236,18 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 	}
 
 	/** Flew into a nether portal: carry on in the other dimension, remembering the way back. */
-	private boolean tryPortal(ServerLevel sl, Player owner, Vec3 pos) {
+	private boolean tryPortal(ServerLevel sl, Player owner, Vec3 prev, Vec3 pos) {
 		if (dispensed || owner == null || portalCooldown > 0) return false;
-		BlockPos bp = BlockPos.containing(pos);
-		if (!sl.getBlockState(bp).is(Blocks.NETHER_PORTAL)) return false;
+		// only when the disc really touches the thin portal plane (not just the 1x1x1 block around it)
+		BlockPos bp = null;
+		for (Vec3 v : new Vec3[]{pos, prev}) {
+			BlockPos c = BlockPos.containing(v);
+			BlockState st = sl.getBlockState(c);
+			if (!st.is(Blocks.NETHER_PORTAL)) continue;
+			AABB box = st.getShape(sl, c).bounds().move(c).inflate(0.15, 0.1, 0.15);
+			if (box.contains(pos) || box.clip(prev, pos).isPresent()) { bp = c; break; }
+		}
+		if (bp == null) return false;
 		TeleportTransition t = ((Portal) Blocks.NETHER_PORTAL).getPortalDestination(sl, this, bp);
 		if (t == null || t.newLevel() == sl) return false;
 		ServerLevel dest = t.newLevel();
@@ -344,7 +375,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 			hitEntities(sl, owner, pos);
 			if (finished) return;
 			chop(sl, owner, pos);
-			if (tryPortal(sl, owner, pos)) return;   // nether portal: continue in the other dimension
+			if (tryPortal(sl, owner, prevPos, pos)) return;   // nether portal: continue in the other dimension
 			if (ownerTouches(owner, prevPos, pos)) {   // you ran into it mid-flight
 				finish(sl, owner, true);
 				return;
@@ -523,6 +554,7 @@ public class ThrowingDiscEntity extends Entity implements ItemSupplier {
 
 	@Override
 	public void remove(RemovalReason reason) {
+		releaseForced();
 		ACTIVE.remove(this);
 		// chunk unload / world close while flying: hand the disc back instead of losing it
 		if (!level().isClientSide() && !finished && reason != RemovalReason.DISCARDED && reason != RemovalReason.KILLED) {
